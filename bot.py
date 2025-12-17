@@ -11,7 +11,7 @@ from telegram.error import BadRequest, Forbidden
 from flask import Flask, request, abort
 
 # ================== CONFIGURAÇÕES ==================
-BOT_TOKEN = os.environ["BOT_TOKEN"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]  # Obrigatório no Render
 
 CANAL_FREE = "@craftworld_free"
 
@@ -61,6 +61,7 @@ ICONES = {
 DYNO_ADDR = TOKENS["DYNO"]
 TZ_BRASIL = timezone('America/Sao_Paulo')
 
+# ================== VARIÁVEIS GLOBAIS ==================
 ultimos_sinais = []
 subscriptions = {}
 precos_anteriores = {}
@@ -70,7 +71,9 @@ last_activity = {}
 alertas_enviados_hoje = 0
 last_alert_day = None
 SUBS_FILE = "subscriptions.json"
+session = None
 
+# ================== FUNÇÕES DE ARQUIVO ==================
 def load_subscriptions():
     if os.path.exists(SUBS_FILE):
         try:
@@ -104,6 +107,7 @@ def save_subscriptions():
     except Exception as e:
         print(f"Erro ao salvar subscriptions: {e}")
 
+# ================== KEYBOARDS ==================
 def get_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 PREÇOS ATUAIS", callback_data="precos")],
@@ -171,6 +175,7 @@ def get_target_menu_keyboard(token):
         [InlineKeyboardButton("⬅️ VOLTAR", callback_data="meus_alertas")]
     ])
 
+# ================== API PREÇOS ==================
 async def get_price_and_volume(session, addr):
     url = f"https://api.geckoterminal.com/api/v2/networks/ronin/tokens/{addr}"
     for _ in range(3):
@@ -197,6 +202,7 @@ async def safe_edit(query, text, reply_markup=None, parse_mode=None):
     except Exception:
         await query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
 
+# ================== HANDLERS ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global subscriptions
     subscriptions = load_subscriptions()
@@ -635,3 +641,36 @@ async def webhook():
         await application.process_update(update)
         return '', 200
     abort(403)
+
+if __name__ == "__main__":
+    subscriptions = load_subscriptions()
+
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # SET WEBHOOK FINAL
+    with flask_app.app_context():
+        webhook_url = "https://bot-telegram-y409.onrender.com/webhook"
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
+            loop.close()
+            print(f"WEBHOOK SETADO COM SUCESSO: {webhook_url}")
+        except Exception as e:
+            print(f"ERRO AO SETAR WEBHOOK: {e}")
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(application.bot.delete_webhook())
+                loop.close()
+                print("Webhook antigo removido")
+            except Exception as e2:
+                print(f"Erro ao deletar webhook antigo: {e2}")
+
+    port = int(os.environ.get('PORT', 10000))
+    print("BOT CFW ALERTAS INICIADO COM WEBHOOK NO RENDER!")
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
