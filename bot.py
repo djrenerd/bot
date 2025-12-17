@@ -631,4 +631,38 @@ if __name__ == "__main__":
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("BOT CFW ALERTAS - SEM TOP VOLUME DIÁRIO - RODANDO!")
+
+    application.run_polling(drop_pending_updates=True)
+
+# ============= KEEP-ALIVE PARA RENDER (obrigatório) =============
+from flask import Flask
+import threading
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+@app.route('/health')
+def health():
+    return "Bot is alive! 🚀", 200
+
+def run_flask():
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    # Carrega as inscrições
+    subscriptions = load_subscriptions()
+    
+    # Inicia o Flask em uma thread separada (para abrir a porta que o Render quer)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Inicia o bot do Telegram (igual você já tinha)
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    print("BOT CFW ALERTAS RODANDO 24/7 NO RENDER!")
     application.run_polling(drop_pending_updates=True)
