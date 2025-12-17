@@ -8,7 +8,6 @@ from pytz import timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import BadRequest, Forbidden
-from flask import Flask, request, abort
 
 # ================== CONFIGURAÇÕES ==================
 BOT_TOKEN = os.environ["BOT_TOKEN"]  # Obrigatório no Render
@@ -71,7 +70,6 @@ last_activity = {}
 alertas_enviados_hoje = 0
 last_alert_day = None
 SUBS_FILE = "subscriptions.json"
-session = None
 
 # ================== FUNÇÕES DE ARQUIVO ==================
 def load_subscriptions():
@@ -625,34 +623,24 @@ async def monitorar_precos(app):
 async def post_init(app: Application):
     asyncio.create_task(monitorar_precos(app))
 
-# ================== FLASK + WEBHOOK ==================
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-@flask_app.route('/health')
-def health():
-    return "Bot CFW Alertas 24/7 WEBHOOK ATIVO E RODANDO LISO! 🚀🔥", 200
-@flask_app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data(as_text=True)
-        update = Update.de_json(json.loads(json_string), application.bot)
-        asyncio.run(application.process_update(update))
-        return '', 200
-    abort(403)
-
+# ================== INÍCIO DO BOT ==================
 if __name__ == "__main__":
-    # 1. Carrega as subscriptions do arquivo
     subscriptions = load_subscriptions()
 
-    # 2. Cria o application do bot
+    # Cria o application
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-    # 3. INICIALIZA O APPLICATION (ESSA É A LINHA QUE FALTAVA!)
-    # Sem isso, o webhook dá o erro "not initialized"
+    # Inicializa e inicia o bot (obrigatório para webhook)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(application.initialize())
     loop.run_until_complete(application.start())
+
+    # Adiciona handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Inicia o webhook nativo do PTB (melhor forma para Render)
     loop.run_until_complete(application.updater.start_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get('PORT', 10000)),
@@ -660,17 +648,7 @@ if __name__ == "__main__":
         webhook_url="https://bot-telegram-y409.onrender.com/webhook"
     ))
 
-    # 4. Adiciona os handlers (comandos, botões, mensagens)
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    print("BOT CFW ALERTAS RODANDO 24/7 COM WEBHOOK NATIVO NO RENDER! 🚀")
 
-    # 5. Mensagem de log pra saber que subiu
-    print("BOT CFW ALERTAS RODANDO COM WEBHOOK NATIVO DO PTB NO RENDER! 🚀")
-
-    # 6. Mantém o bot rodando pra sempre
+    # Mantém o loop rodando eternamente
     loop.run_forever()
-
-
-
-
