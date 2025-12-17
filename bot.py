@@ -632,15 +632,16 @@ flask_app = Flask(__name__)
 @flask_app.route('/health')
 def health():
     return "Bot CFW Alertas 24/7 WEBHOOK ATIVO E RODANDO LISO! 🚀🔥", 200
-
 @flask_app.route('/webhook', methods=['POST'])
 async def webhook():
+    """Rota async para receber updates do Telegram"""
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data(as_text=True)
         update = Update.de_json(json.loads(json_string), application.bot)
         await application.process_update(update)
         return '', 200
-    abort(403)
+    else:
+        abort(403)
 
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
@@ -674,3 +675,4 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
     print("BOT CFW ALERTAS INICIADO COM WEBHOOK NO RENDER!")
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
