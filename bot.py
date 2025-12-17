@@ -7,9 +7,10 @@ from datetime import datetime
 from pytz import timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telegram.error import BadRequest, TimedOut
+from telegram.error import BadRequest, TimedOut, Forbidden
+from flask import Flask, request, abort
 
-BOT_TOKEN = "7695089803:AAG5TlChCJ92qC4omVReqJK24LLvzjdEr4o"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "7695089803:AAG5TlChCJ92qC4omVReqJK24LLvzjdEr4o")
 
 CANAL_FREE = "@craftworld_free"
 
@@ -115,7 +116,6 @@ def get_menu_keyboard():
         [InlineKeyboardButton("🔔 ADICIONAR ALERTAS", callback_data="alertas")],
         [InlineKeyboardButton("📈 TOP 10 VOLÁTEIS/LUCRATIVOS DIÁRIO", callback_data="top_diario")],
         [InlineKeyboardButton("📊 ESTATÍSTICAS DO BOT", callback_data="stats_bot")],
-        # REMOVIDO: TOP VOLUME DIÁRIO
         [InlineKeyboardButton("📖 GUIA DE USO", callback_data="guia")],
         [InlineKeyboardButton("❤️ APOIE O BOT", callback_data="apoie")],
     ])
@@ -436,16 +436,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Nome: {PIX_NOME}\n\n"
             "Ajuda a manter o bot 24h online! Obrigado 🙏"
         )
-        try:
-            await query.edit_message_text(
-                text=apoio,
-                parse_mode='Markdown',
-                reply_markup=get_voltar_keyboard(),
-                disable_web_page_preview=True
-            )
-        except Exception as e:
-            print(f"Erro ao editar 'apoie': {e}")
-            await query.message.reply_text(apoio, parse_mode='Markdown', reply_markup=get_voltar_keyboard(), disable_web_page_preview=True)
+        await safe_edit(query, apoio, reply_markup=get_voltar_keyboard(), parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -512,13 +503,20 @@ async def enviar_alerta_preco(uid, token, preco_atual, alvo, direcao):
         [InlineKeyboardButton("❌ Limpar Alerta", callback_data="limpar_alerta")],
         [InlineKeyboardButton("⬅️ MENU", callback_data="menu")]
     ])
-    await application.bot.send_message(int(uid), texto, parse_mode='Markdown', reply_markup=kb)
+    try:
+        await application.bot.send_message(int(uid), texto, parse_mode='Markdown', reply_markup=kb)
+    except Forbidden:
+        print(f"Usuário {uid} bloqueou o bot - ignorando alerta")
+    except Exception as e:
+        print(f"Erro enviando alerta preço pra {uid}: {e}")
 
 async def monitorar_precos(app):
-    global application, last_day, dados_diarios, alertas_enviados_hoje, last_alert_day, session
+    global application, session, subscriptions, last_day, dados_diarios, alertas_enviados_hoje, last_alert_day
     application = app
     
     session = aiohttp.ClientSession()
+    
+    subscriptions = load_subscriptions()
     
     precos_antigos_global = {}
     
@@ -594,9 +592,16 @@ async def monitorar_precos(app):
                                 f"💥 Diferença:       {diferenca:+.4f} COIN"
                             )
 
-                            await application.bot.send_message(int(uid), texto, parse_mode='Markdown', reply_markup=kb)
-                            precos_anteriores[uid][nome] = preco_coin
-                            alertas_enviados_hoje += 1
+                            try:
+                                await application.bot.send_message(int(uid), texto, parse_mode='Markdown', reply_markup=kb)
+                                precos_anteriores[uid][nome] = preco_coin
+                                alertas_enviados_hoje += 1
+                            except Forbidden:
+                                print(f"Usuário {uid} bloqueou o bot - removendo da lista")
+                                del subscriptions[uid]
+                                save_subscriptions()
+                            except Exception as e:
+                                print(f"Erro enviando alerta pra {uid}: {e}")
 
                 if abs(var) >= 4.0:
                     await enviar_sinal(nome, var)
@@ -622,51 +627,33 @@ async def monitorar_precos(app):
 async def post_init(app: Application):
     asyncio.create_task(monitorar_precos(app))
 
-if __name__ == "__main__":
-    subscriptions = load_subscriptions()
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("BOT CFW ALERTAS - SEM TOP VOLUME DIÁRIO - RODANDO!")
+# ================== FLASK SETUP FOR RENDER ==================
+flask_app = Flask(__name__)
 
-    application.run_polling(drop_pending_updates=True)
-# ============= KEEP-ALIVE PERFEITO PARA RENDER FREE TIER (PORTA ABRE IMEDIATO) =============
-from flask import Flask
-import threading
-import os
-
-app = Flask(__name__)
-
-@app.route('/')
-@app.route('/health')
-@app.route('/alive')
+@flask_app.route('/')
+@flask_app.route('/health')
 def health():
-    return "Bot CFW Alertas 24/7 ONLINE! 🚀🔥 Alertas voando e subscribers felizes!", 200
+    return "Bot is alive! 🚀", 200
 
-def run_flask():
-    port = int(os.environ.get('PORT', 8080))  # Render usa porta dinâmica
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+@flask_app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data(as_text=True)
+        update = Update.de_json(json.loads(json_string), application.bot)
+        asyncio.run(application.process_update(update))
+        return '', 200
+    abort(403)
+
+@flask_app.before_first_request
+def set_webhook():
+    asyncio.run(application.bot.set_webhook(url=f"https://bot-telegram-y409.onrender.com/webhook"))
 
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
-    
-    # Roda Flask na thread principal (porta abre em <5 segundos - Render ama isso)
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = False  # Não daemon pra não morrer se polling travar
-    flask_thread.start()
-    
-    # Dá um tempinho pro Flask subir (garantia total)
-    import time
-    time.sleep(5)
-    
-    # Agora roda o polling do Telegram em foreground
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("BOT CFW ALERTAS 24/7 NO RENDER - PORTA ABERTA E POLLING RODANDO ETERNO!")
-    application.run_polling(drop_pending_updates=True)
+    print("BOT CFW ALERTAS - RODANDO COM WEBHOOK NO RENDER!")
+    port = int(os.environ.get('PORT', 10000))
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
