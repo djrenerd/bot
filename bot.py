@@ -630,25 +630,30 @@ application = None
 
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
-
+    
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    # FIX CRÍTICO: Inicializa o application (resolve o "not initialized")
     loop = asyncio.get_event_loop()
-    application = loop.run_until_complete(Application.builder().token(BOT_TOKEN).build())
-
     loop.run_until_complete(application.initialize())
     loop.run_until_complete(application.start())
-    loop.run_until_complete(application.updater.start_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get('PORT', 10000)),
-        url_path="/webhook",
-        webhook_url="https://bot-telegram-y409.onrender.com/webhook"
-    ))
-
+    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    loop.run_until_complete(application.post_init(post_init))
-
-    print("BOT CFW ALERTAS RODANDO 24/7 COM WEBHOOK NATIVO NO RENDER! 🚀")
-
-    loop.run_forever()
+    
+    # Set webhook (mantém o teu bloco)
+    with flask_app.app_context():
+        webhook_url = "https://srv-d51dm4npm1nc73bttoe0.onrender.com/webhook"
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
+            loop.close()
+            print(f"WEBHOOK SETADO COM SUCESSO: {webhook_url}")
+        except Exception as e:
+            print(f"ERRO AO SETAR WEBHOOK: {e}")
+    
+    port = int(os.environ.get('PORT', 10000))
+    print("BOT CFW ALERTAS INICIADO COM WEBHOOK NO RENDER!")
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
