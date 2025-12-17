@@ -7,10 +7,11 @@ from datetime import datetime
 from pytz import timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telegram.error import BadRequest, TimedOut, Forbidden
+from telegram.error import BadRequest, Forbidden
 from flask import Flask, request, abort
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "7695089803:AAG5TlChCJ92qC4omVReqJK24LLvzjdEr4o")
+# ================== CONFIGURAÇÕES ==================
+BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 CANAL_FREE = "@craftworld_free"
 
@@ -58,22 +59,17 @@ ICONES = {
 }
 
 DYNO_ADDR = TOKENS["DYNO"]
+TZ_BRASIL = timezone('America/Sao_Paulo')
 
 ultimos_sinais = []
 subscriptions = {}
-application = None
-SUBS_FILE = "subscriptions.json"
-
 precos_anteriores = {}
 dados_diarios = {}
 last_day = None
-TZ_BRASIL = timezone('America/Sao_Paulo')
-
 last_activity = {}
 alertas_enviados_hoje = 0
 last_alert_day = None
-
-session = None
+SUBS_FILE = "subscriptions.json"
 
 def load_subscriptions():
     if os.path.exists(SUBS_FILE):
@@ -511,18 +507,14 @@ async def enviar_alerta_preco(uid, token, preco_atual, alvo, direcao):
         print(f"Erro enviando alerta preço pra {uid}: {e}")
 
 async def monitorar_precos(app):
-    global application, session, subscriptions, last_day, dados_diarios, alertas_enviados_hoje, last_alert_day
+    global application, session
     application = app
-    
     session = aiohttp.ClientSession()
-    
     subscriptions = load_subscriptions()
-    
     precos_antigos_global = {}
-    
     last_day = datetime.now(TZ_BRASIL).day
     last_alert_day = last_day
-    
+
     while True:
         now = datetime.now(TZ_BRASIL)
         current_day = now.day
@@ -627,13 +619,13 @@ async def monitorar_precos(app):
 async def post_init(app: Application):
     asyncio.create_task(monitorar_precos(app))
 
-# ================== FLASK SETUP FOR RENDER ==================
+# ================== FLASK + WEBHOOK ==================
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
 @flask_app.route('/health')
 def health():
-    return "Bot is alive! 🚀", 200
+    return "Bot CFW Alertas 24/7 WEBHOOK ATIVO E RODANDO LISO! 🚀🔥", 200
 
 @flask_app.route('/webhook', methods=['POST'])
 def webhook():
@@ -644,23 +636,35 @@ def webhook():
         return '', 200
     abort(403)
 
-# Seta o webhook ao iniciar (compatível Flask novo + PTB v20+)
-with flask_app.app_context():
-    webhook_url = "https://bot-telegram-y409.onrender.com/webhook"
-    try:
-        asyncio.run(application.bot.set_webhook(url=webhook_url))
-        print(f"WEBHOOK SETADO COM SUCESSO: {webhook_url}")
-    except Exception as e:
-        print(f"ERRO AO SETAR WEBHOOK: {e}")
-
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
+
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("BOT CFW ALERTAS - RODANDO COM WEBHOOK NO RENDER!")
+
+    # SET WEBHOOK FINAL
+    with flask_app.app_context():
+        webhook_url = "https://bot-telegram-y409.onrender.com/webhook"
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
+            loop.close()
+            print(f"WEBHOOK SETADO COM SUCESSO: {webhook_url}")
+        except Exception as e:
+            print(f"ERRO AO SETAR WEBHOOK: {e}")
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(application.bot.delete_webhook())
+                loop.close()
+                print("Webhook antigo removido")
+            except Exception as e2:
+                print(f"Erro ao deletar webhook antigo: {e2}")
+
     port = int(os.environ.get('PORT', 10000))
+    print("BOT CFW ALERTAS INICIADO COM WEBHOOK NO RENDER!")
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-
