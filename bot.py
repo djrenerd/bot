@@ -633,41 +633,40 @@ if __name__ == "__main__":
     print("BOT CFW ALERTAS - SEM TOP VOLUME DIÁRIO - RODANDO!")
 
     application.run_polling(drop_pending_updates=True)
-
-# ============= KEEP-ALIVE OTIMIZADO PARA RENDER FREE TIER =============
+# ============= KEEP-ALIVE PERFEITO PARA RENDER FREE TIER (PORTA ABRE IMEDIATO) =============
 from flask import Flask
 import threading
 import os
-import time
 
 app = Flask(__name__)
 
 @app.route('/')
 @app.route('/health')
-@app.route('/alive')  # rota extra pra UptimeRobot
+@app.route('/alive')
 def health():
-    return "Bot CFW Alertas rodando 24/7! 🚀🔥 Subscribers ativos e alertas voando!", 200
+    return "Bot CFW Alertas 24/7 ONLINE! 🚀🔥 Alertas voando e subscribers felizes!", 200
 
 def run_flask():
-    port = int(os.environ.get('PORT', 10000))  # Render usa porta dinâmica, default 10000 em alguns casos
+    port = int(os.environ.get('PORT', 8080))  # Render usa porta dinâmica
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
     
-    # Inicia Flask na thread principal (abre porta em segundos)
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    # Roda Flask na thread principal (porta abre em <5 segundos - Render ama isso)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = False  # Não daemon pra não morrer se polling travar
     flask_thread.start()
     
-    # Dá 3 segundos pra porta abrir (garante que Render detecta)
-    time.sleep(3)
+    # Dá um tempinho pro Flask subir (garantia total)
+    import time
+    time.sleep(5)
     
-    # Agora roda o bot Telegram
+    # Agora roda o polling do Telegram em foreground
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("BOT CFW ALERTAS ONLINE 24/7 NO RENDER FREE - PORTA ABERTA E PRONTO PRA VOAR!")
+    print("BOT CFW ALERTAS 24/7 NO RENDER - PORTA ABERTA E POLLING RODANDO ETERNO!")
     application.run_polling(drop_pending_updates=True)
-
