@@ -642,37 +642,35 @@ def webhook():
     abort(403)
 
 if __name__ == "__main__":
+    # 1. Carrega as subscriptions do arquivo
     subscriptions = load_subscriptions()
 
+    # 2. Cria o application do bot
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
+    # 3. INICIALIZA O APPLICATION (ESSA É A LINHA QUE FALTAVA!)
+    # Sem isso, o webhook dá o erro "not initialized"
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(application.initialize())
+    loop.run_until_complete(application.start())
+    loop.run_until_complete(application.updater.start_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get('PORT', 10000)),
+        url_path="/webhook",
+        webhook_url="https://bot-telegram-y409.onrender.com/webhook"
+    ))
+
+    # 4. Adiciona os handlers (comandos, botões, mensagens)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # SET WEBHOOK FINAL
-    with flask_app.app_context():
-        webhook_url = "https://bot-telegram-y409.onrender.com/webhook"
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
-            loop.close()
-            print(f"WEBHOOK SETADO COM SUCESSO: {webhook_url}")
-        except Exception as e:
-            print(f"ERRO AO SETAR WEBHOOK: {e}")
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(application.bot.delete_webhook())
-                loop.close()
-                print("Webhook antigo removido")
-            except Exception as e2:
-                print(f"Erro ao deletar webhook antigo: {e2}")
+    # 5. Mensagem de log pra saber que subiu
+    print("BOT CFW ALERTAS RODANDO COM WEBHOOK NATIVO DO PTB NO RENDER! 🚀")
 
-    port = int(os.environ.get('PORT', 10000))
-    print("BOT CFW ALERTAS INICIADO COM WEBHOOK NO RENDER!")
-    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    # 6. Mantém o bot rodando pra sempre
+    loop.run_forever()
+
 
 
 
