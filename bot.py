@@ -63,15 +63,20 @@ TZ_BRASIL = timezone('America/Sao_Paulo')
 # ================== VARIÁVEIS GLOBAIS ==================
 ultimos_sinais = []
 subscriptions = {}
+application = None
+SUBS_FILE = "subscriptions.json"
+
 precos_anteriores = {}
 dados_diarios = {}
 last_day = None
+TZ_BRASIL = timezone('America/Sao_Paulo')
+
 last_activity = {}
 alertas_enviados_hoje = 0
 last_alert_day = None
-SUBS_FILE = "subscriptions.json"
 
-# ================== FUNÇÕES DE ARQUIVO ==================
+session = None
+
 def load_subscriptions():
     if os.path.exists(SUBS_FILE):
         try:
@@ -85,7 +90,7 @@ def load_subscriptions():
                         data[user_id]["targets"] = {}
                     for token in data[user_id]["tokens"]:
                         if token not in data[user_id]["targets"]:
-                            data[user_id]["targets"][token] = {"above": None, "below": None, "triggered_above": False, "triggered_below": False}
+                            data[user_id]["targets"][token] = {"above": None, "below": None, "triggered_above": False, "triggered_below": false}
                 return data
         except Exception as e:
             print(f"Erro ao carregar subscriptions: {e}")
@@ -105,7 +110,6 @@ def save_subscriptions():
     except Exception as e:
         print(f"Erro ao salvar subscriptions: {e}")
 
-# ================== KEYBOARDS ==================
 def get_menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 PREÇOS ATUAIS", callback_data="precos")],
@@ -173,7 +177,6 @@ def get_target_menu_keyboard(token):
         [InlineKeyboardButton("⬅️ VOLTAR", callback_data="meus_alertas")]
     ])
 
-# ================== API PREÇOS ==================
 async def get_price_and_volume(session, addr):
     url = f"https://api.geckoterminal.com/api/v2/networks/ronin/tokens/{addr}"
     for _ in range(3):
@@ -200,7 +203,6 @@ async def safe_edit(query, text, reply_markup=None, parse_mode=None):
     except Exception:
         await query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
 
-# ================== HANDLERS ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global subscriptions
     subscriptions = load_subscriptions()
@@ -624,23 +626,16 @@ async def post_init(app: Application):
     asyncio.create_task(monitorar_precos(app))
 
 # ================== INÍCIO DO BOT ==================
+application = None
+
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
 
-    # Cria o application
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-
-    # Inicializa e inicia o bot (obrigatório para webhook)
     loop = asyncio.get_event_loop()
+    application = loop.run_until_complete(Application.builder().token(BOT_TOKEN).build())
+
     loop.run_until_complete(application.initialize())
     loop.run_until_complete(application.start())
-
-    # Adiciona handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Inicia o webhook nativo do PTB (melhor forma para Render)
     loop.run_until_complete(application.updater.start_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get('PORT', 10000)),
@@ -648,7 +643,12 @@ if __name__ == "__main__":
         webhook_url="https://bot-telegram-y409.onrender.com/webhook"
     ))
 
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    loop.run_until_complete(application.post_init(post_init))
+
     print("BOT CFW ALERTAS RODANDO 24/7 COM WEBHOOK NATIVO NO RENDER! 🚀")
 
-    # Mantém o loop rodando eternamente
     loop.run_forever()
