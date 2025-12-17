@@ -634,35 +634,40 @@ if __name__ == "__main__":
 
     application.run_polling(drop_pending_updates=True)
 
-# ============= KEEP-ALIVE PARA RENDER (obrigatório) =============
+# ============= KEEP-ALIVE OTIMIZADO PARA RENDER FREE TIER =============
 from flask import Flask
 import threading
 import os
+import time
 
 app = Flask(__name__)
 
 @app.route('/')
 @app.route('/health')
+@app.route('/alive')  # rota extra pra UptimeRobot
 def health():
-    return "Bot is alive! 🚀", 200
+    return "Bot CFW Alertas rodando 24/7! 🚀🔥 Subscribers ativos e alertas voando!", 200
 
 def run_flask():
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 10000))  # Render usa porta dinâmica, default 10000 em alguns casos
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
-    # Carrega as inscrições
     subscriptions = load_subscriptions()
     
-    # Inicia o Flask em uma thread separada (para abrir a porta que o Render quer)
+    # Inicia Flask na thread principal (abre porta em segundos)
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Inicia o bot do Telegram (igual você já tinha)
+    # Dá 3 segundos pra porta abrir (garante que Render detecta)
+    time.sleep(3)
+    
+    # Agora roda o bot Telegram
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("BOT CFW ALERTAS RODANDO 24/7 NO RENDER!")
+    print("BOT CFW ALERTAS ONLINE 24/7 NO RENDER FREE - PORTA ABERTA E PRONTO PRA VOAR!")
     application.run_polling(drop_pending_updates=True)
+
