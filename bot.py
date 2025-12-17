@@ -628,43 +628,10 @@ def health():
     return "Bot CFW Alertas 24/7 WEBHOOK ATIVO E RODANDO LISO! 🚀🔥", 200
 
 @flask_app.route('/webhook', methods=['POST'])
-def webhook():
+async def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data(as_text=True)
         update = Update.de_json(json.loads(json_string), application.bot)
-        asyncio.run(application.process_update(update))
+        await application.process_update(update)
         return '', 200
     abort(403)
-
-if __name__ == "__main__":
-    subscriptions = load_subscriptions()
-
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # SET WEBHOOK FINAL
-    with flask_app.app_context():
-        webhook_url = "https://bot-telegram-y409.onrender.com/webhook"
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
-            loop.close()
-            print(f"WEBHOOK SETADO COM SUCESSO: {webhook_url}")
-        except Exception as e:
-            print(f"ERRO AO SETAR WEBHOOK: {e}")
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(application.bot.delete_webhook())
-                loop.close()
-                print("Webhook antigo removido")
-            except Exception as e2:
-                print(f"Erro ao deletar webhook antigo: {e2}")
-
-    port = int(os.environ.get('PORT', 10000))
-    print("BOT CFW ALERTAS INICIADO COM WEBHOOK NO RENDER!")
-    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
