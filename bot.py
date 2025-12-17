@@ -644,9 +644,17 @@ def webhook():
         return '', 200
     abort(403)
 
-@flask_app.before_first_request
-def set_webhook():
-    asyncio.run(application.bot.set_webhook(url=f"https://bot-telegram-y409.onrender.com/webhook"))
+# Seta o webhook ao iniciar o Flask (compatível com Flask 3.1+)
+def set_webhook_on_start():
+    webhook_url = "https://bot-telegram-y409.onrender.com/webhook"
+    try:
+        asyncio.run(application.bot.set_webhook(url=webhook_url))
+        print(f"Webhook setado com sucesso: {webhook_url}")
+    except Exception as e:
+        print(f"Erro ao setar webhook: {e}")
+
+# Chama manualmente logo após criar o application
+set_webhook_on_start()
 
 if __name__ == "__main__":
     subscriptions = load_subscriptions()
@@ -657,3 +665,4 @@ if __name__ == "__main__":
     print("BOT CFW ALERTAS - RODANDO COM WEBHOOK NO RENDER!")
     port = int(os.environ.get('PORT', 10000))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
